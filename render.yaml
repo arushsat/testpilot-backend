@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: testpilot-backend
+    runtime: python
+    buildCommand: |
+      pip install -r requirements.txt
+      playwright install
+    startCommand: python app.py
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "true"
