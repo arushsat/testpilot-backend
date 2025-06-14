@@ -1,23 +1,40 @@
 from flask import Flask, request, jsonify
-import base64
-from io import BytesIO
 from screenshot_utils import take_screenshot_bytes, compare_images_bytes
+from supabase import create_client
+import os
+import uuid
+from io import BytesIO
+from PIL import Image
+from dotenv import load_dotenv
+
+# Load environment variables (only needed for local dev)
+load_dotenv()
 
 app = Flask(__name__)
+
+# Supabase setup
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "testpilot-images")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def upload_image_to_supabase(image_bytes, filename):
+    path = f"{filename}.png"
+    supabase.storage.from_(SUPABASE_BUCKET).upload(path, image_bytes, {"content-type": "image/png", "upsert": True})
+    return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{path}"
 
 @app.route("/save_baseline", methods=["POST"])
 def save_baseline():
     data = request.get_json()
     url = data["url"]
-
     try:
-        # Capture screenshot as bytes
-        image_bytes = take_screenshot_bytes(url)
-        # Encode to base64
-        base64_str = base64.b64encode(image_bytes).decode("utf-8")
+        screenshot_bytes = take_screenshot_bytes(url)
+        unique_name = f"baseline_{uuid.uuid4().hex}"
+        public_url = upload_image_to_supabase(screenshot_bytes, unique_name)
         return jsonify({
             "status": "baseline_generated",
-            "baseline_image": f"data:image/png;base64,{base64_str}"
+            "baseline_url": public_url
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -26,32 +43,12 @@ def save_baseline():
 def run_test():
     data = request.get_json()
     url = data.get("url")
-    baseline_base64 = data.get("baseline_image")
+    baseline_url = data.get("baseline_url")
 
-    if not url or not baseline_base64:
-        return jsonify({"status": "error", "message": "Both 'url' and 'baseline_image' are required"}), 400
+    if not url or not baseline_url:
+        return jsonify({"status": "error", "message": "Both 'url' and 'baseline_url' are required"}), 400
 
     try:
-        # Decode baseline
-        baseline_bytes = base64.b64decode(baseline_base64.split(",")[-1])
-        # Take new screenshot
-        new_bytes = take_screenshot_bytes(url)
-        # Compare
-        diff_percent, diff_image_bytes = compare_images_bytes(baseline_bytes, new_bytes)
-
-        return jsonify({
-            "status": "success",
-            "diff_percent": round(diff_percent, 2),
-            "new_image": f"data:image/png;base64,{base64.b64encode(new_bytes).decode('utf-8')}",
-            "diff_image": f"data:image/png;base64,{base64.b64encode(diff_image_bytes).decode('utf-8')}"
-        })
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
-
-@app.route("/healthz")
-def health():
-    return "ok", 200
+        # Download baseline image
+        baseline_resp = supabase.storage.from_(SUPABASE_BUCKET).download(baseline_url.split("/")[-1])
+        baseline
