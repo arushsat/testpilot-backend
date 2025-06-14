@@ -1,16 +1,16 @@
-import numpy as np
+from playwright.sync_api import sync_playwright
 from PIL import Image, ImageChops
 from io import BytesIO
-from playwright.sync_api import sync_playwright
+import numpy as np
 
 def take_screenshot_bytes(url):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(url, wait_until="networkidle")
-        buffer = page.screenshot(full_page=True)
+        screenshot = page.screenshot(full_page=True)
         browser.close()
-        return buffer
+        return screenshot
 
 def compare_images_bytes(baseline_bytes, new_bytes):
     baseline_img = Image.open(BytesIO(baseline_bytes)).convert("RGB")
@@ -29,7 +29,6 @@ def compare_images_bytes(baseline_bytes, new_bytes):
     mask = diff.convert("L").point(lambda x: 255 if x > 10 else 0)
     diff_image = Image.composite(red_overlay, new_img, mask)
 
-    output_buffer = BytesIO()
-    diff_image.save(output_buffer, format="PNG")
-
-    return diff_percent, output_buffer.getvalue()
+    output = BytesIO()
+    diff_image.save(output, format="PNG")
+    return diff_percent, output.getvalue()
