@@ -51,4 +51,24 @@ def run_test():
     try:
         # Download baseline image
         baseline_resp = supabase.storage.from_(SUPABASE_BUCKET).download(baseline_url.split("/")[-1])
-        baseline
+        baseline_bytes = baseline_resp
+
+        # Take new screenshot
+        new_screenshot_bytes = take_screenshot_bytes(url)
+
+        # Compare
+        diff_percent, diff_image_bytes = compare_images_bytes(baseline_bytes, new_screenshot_bytes)
+
+        # Upload new and diff images
+        new_url = upload_image_to_supabase(new_screenshot_bytes, f"new_{uuid.uuid4().hex}")
+        diff_url = upload_image_to_supabase(diff_image_bytes, f"diff_{uuid.uuid4().hex}")
+
+        return jsonify({
+            "status": "success",
+            "diff_percent": round(diff_percent, 2),
+            "new_url": new_url,
+            "diff_url": diff_url
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
